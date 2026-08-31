@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/noatgnu/cookeR/internal/appdir"
-	"github.com/noatgnu/cookeR/internal/rversion"
+	"github.com/noatgnu/cookeR/rversion"
 )
 
 // version is set via -ldflags "-X main.version=..." at release build time; it stays "dev" for local builds.
