@@ -1,0 +1,7 @@
+/cooker
+/cooker.exe
+/dist/
+*.Rcheck/
+*.Rproj.user/
+.Rhistory
+.RData

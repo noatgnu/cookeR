@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-x86_64
+          - goos: darwin
+            goarch: arm64
+            suffix: macos-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Determine output filename
+        id: name
+        run: |
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then ext=".exe"; fi
+          echo "binary=cooker${ext}" >> "$GITHUB_OUTPUT"
+          echo "asset=cooker-${{ github.event.release.tag_name }}-${{ matrix.suffix }}${ext}" >> "$GITHUB_OUTPUT"
+
+      - name: Build a static, dependency-free binary (CGO disabled, no dynamic library linkage)
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: go build -ldflags="-s -w -X main.version=${{ github.event.release.tag_name }}" -o "${{ steps.name.outputs.binary }}" .
+
+      - name: Package and checksum
+        run: |
+          mv "${{ steps.name.outputs.binary }}" "${{ steps.name.outputs.asset }}"
+          sha256sum "${{ steps.name.outputs.asset }}" > "${{ steps.name.outputs.asset }}.sha256"
+
+      - name: Attach build artifacts to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            ${{ steps.name.outputs.asset }}
+            ${{ steps.name.outputs.asset }}.sha256
