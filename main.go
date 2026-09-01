@@ -47,7 +47,7 @@ func printUsage() {
 	fmt.Println("Usage: cooker <command> [subcommand] [flags]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  r install <version>       Install an R version")
+	fmt.Println("  r install <version>|latest Install an R version (add --asset-url/--checksum-url/--asset-filename to skip discovery)")
 	fmt.Println("  r list [--available]      List installed (or available) R versions")
 	fmt.Println("  r uninstall <version>     Remove an installed R version")
 	fmt.Println("  r path <version>          Print the Rscript path for an installed version")
@@ -79,7 +79,7 @@ func newManager() (*rversion.Manager, error) {
 
 func cmdR(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cooker r install <version> | cooker r list [--available] [--json] | cooker r uninstall <version> | cooker r path <version>")
+		return fmt.Errorf("usage: cooker r install <version>|latest [--asset-url=...] | cooker r list [--available] [--json] | cooker r uninstall <version> | cooker r path <version>")
 	}
 
 	switch args[0] {
@@ -97,26 +97,54 @@ func cmdR(args []string) error {
 }
 
 func cmdRInstall(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: cooker r install <version>")
+	fs := flag.NewFlagSet("r install", flag.ContinueOnError)
+	assetURL := fs.String("asset-url", "", "skip release discovery (no API call) and install this exact asset URL")
+	checksumURL := fs.String("checksum-url", "", "sha256 checksum URL for --asset-url")
+	assetFileName := fs.String("asset-filename", "", "archive file name for --asset-url, used to pick zip vs tar.xz extraction")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
-	version := args[0]
+	rest := fs.Args()
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: cooker r install <version>|latest [--asset-url=... --checksum-url=... --asset-filename=...]")
+	}
+	version := rest[0]
 
 	m, err := newManager()
 	if err != nil {
 		return err
 	}
 
-	releases, err := m.ListAvailableRVersions()
-	if err != nil {
-		return fmt.Errorf("failed to list available R versions: %w", err)
-	}
-
 	var target *rversion.Release
-	for i := range releases {
-		if releases[i].Version == version {
-			target = &releases[i]
-			break
+	if *assetURL != "" {
+		if version == "latest" {
+			return fmt.Errorf("--asset-url requires an explicit version, not \"latest\"")
+		}
+		if *checksumURL == "" || *assetFileName == "" {
+			return fmt.Errorf("--asset-url requires --checksum-url and --asset-filename")
+		}
+		target = &rversion.Release{
+			Version:       version,
+			AssetURL:      *assetURL,
+			ChecksumURL:   *checksumURL,
+			AssetFileName: *assetFileName,
+		}
+	} else {
+		releases, err := m.ListAvailableRVersions()
+		if err != nil {
+			return fmt.Errorf("failed to list available R versions: %w", err)
+		}
+		if version == "latest" {
+			if len(releases) > 0 {
+				target = &releases[0]
+			}
+		} else {
+			for i := range releases {
+				if releases[i].Version == version {
+					target = &releases[i]
+					break
+				}
+			}
 		}
 	}
 	if target == nil {
