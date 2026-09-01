@@ -241,7 +241,12 @@ func (m *Manager) InstallRVersion(release Release, progress func(string)) error 
 		return fmt.Errorf("R %s is already installed at %s", release.Version, destDir)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "cooker-r-install-*")
+	if err := os.MkdirAll(m.InstallDir, 0755); err != nil {
+		return err
+	}
+
+	// Staged inside InstallDir, not the OS temp dir: os.Rename can't cross drive letters/volumes on Windows, and CI runners commonly put the workspace and the OS temp dir on different drives.
+	tmpDir, err := os.MkdirTemp(m.InstallDir, "tmp-install-*")
 	if err != nil {
 		return err
 	}
@@ -282,9 +287,6 @@ func (m *Manager) InstallRVersion(release Release, progress func(string)) error 
 		}
 	}
 
-	if err := os.MkdirAll(m.InstallDir, 0755); err != nil {
-		return err
-	}
 	if err := os.Rename(extractDir, destDir); err != nil {
 		return fmt.Errorf("failed to move extracted R into place: %w", err)
 	}
@@ -305,7 +307,7 @@ func (m *Manager) ListInstalledRVersions() ([]string, error) {
 
 	var versions []string
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), "tmp-install-") {
 			versions = append(versions, e.Name())
 		}
 	}
